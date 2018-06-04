@@ -1,0 +1,56 @@
+Amanda-Keledjians-MacBook-Pro:bin amandawarlick$ ls -l
+total 9888
+-r-xr-xr-x  1 amandawarlick  admin     8187 Jan 18 07:38 function_grep.pl
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 msiexec
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 notepad
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 regedit
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 regsvr32
+-r-xr-xr-x  1 amandawarlick  admin   442624 Jan 18 07:38 widl
+-r-xr-xr-x  1 amandawarlick  admin    13636 Jan 18 07:38 wine
+-r-xr-xr-x  1 amandawarlick  admin    13756 Jan 18 07:38 wine64
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 wineboot
+-r-xr-xr-x  1 amandawarlick  admin   130824 Jan 18 07:38 winebuild
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 winecfg
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 wineconsole
+lrwxr-xr-x  1 amandawarlick  admin        7 Jan 18 07:38 winecpp -> winegcc
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 winedbg
+-r-xr-xr-x  1 amandawarlick  admin   191364 Jan 18 07:38 winedump
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 winefile
+lrwxr-xr-x  1 amandawarlick  admin        7 Jan 18 07:38 wineg++ -> winegcc
+-r-xr-xr-x  1 amandawarlick  admin    41364 Jan 18 07:38 winegcc
+-r-xr-xr-x  1 amandawarlick  admin    95099 Jan 18 07:38 winemaker
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 winemine
+-r-xr-xr-x  1 amandawarlick  admin     2045 Apr 22 13:00 winepath
+-r-xr-xr-x  1 amandawarlick  admin   612052 Jan 18 07:38 wineserver
+-r-xr-xr-x  1 amandawarlick  admin  1637980 Jan 18 07:38 wmc
+-r-xr-xr-x  1 amandawarlick  admin  1798444 Jan 18 07:38 wrc
+Amanda-Keledjians-MacBook-Pro:bin amandawarlick$ clear
+
+Amanda-Keledjians-MacBook-Pro:bin amandawarlick$ cd ~
+Amanda-Keledjians-MacBook-Pro:~ amandawarlick$ cd .wine/drive_c/Program\ Files\
+> 
+Amanda-Keledjians-MacBook-Pro:~ amandawarlick$ cd .wine/drive_c/Program\ Files/OpenBUGS/
+Amanda-Keledjians-MacBook-Pro:OpenBUGS amandawarlick$ ls -l
+total 0
+drwxr-xr-x  53 amandawarlick  staff  1802 May 28 10:48 OpenBUGS323
+Amanda-Keledjians-MacBook-Pro:OpenBUGS amandawarlick$ cd .wine/drive_c/Program\ Files/OpenBUGS/
+-bash: cd: .wine/drive_c/Program Files/OpenBUGS/: No such file or directory
+Amanda-Keledjians-MacBook-Pro:OpenBUGS amandawarlick$ cd ~/.wine/drive_c/Progra
+Amanda-Keledjians-MacBook-Pro:OpenBUGS amandawarlick$ cd ~
+Amanda-Keledjians-MacBook-Pro:~ amandawarlick$ cd ..
+Amanda-Keledjians-MacBook-Pro:Users amandawarlick$ ls -l
+total 0
+drwxr-xr-x+ 11 Guest          _guest   374 Aug 20  2016 Guest
+drwxrwxrwt   7 root           wheel    238 May 25 07:22 Shared
+drwxr-xr-x+ 39 amandawarlick  staff   1326 May 28 09:32 amandawarlick
+Amanda-Keledjians-MacBook-Pro:Users amandawarlick$ pwd
+/Users
+Amanda-Keledjians-MacBook-Pro:Users amandawarlick$ 
+
+
+
+
+
+
+
+

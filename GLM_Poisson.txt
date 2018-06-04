@@ -1,0 +1,16 @@
+
+    model {
+#priors
+    alpha ~ dunif(-20, 20)
+    beta1 ~ dunif(-10, 10)
+    beta2 ~ dunif(-10, 10)
+    beta3 ~ dunif(-10, 10)
+#likelihood
+  for(i in 1:n {
+C[i]} ~ dpois(lambda[i]) #distribution of random element
+log(lambda[i]) <- log.lambda[i] #link function
+log(lambda[i] <- alpha + beta1*year[i] + 
+        beta2*pow(year[i], 2) + beta3*pow(year[i], 3) #linear predictor
+    }
+}
+
