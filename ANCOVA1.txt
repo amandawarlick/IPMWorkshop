@@ -1,0 +1,21 @@
+
+model {
+
+# Priors
+alpha ~ dnorm(0, 1.0E-06)            # Prior for intercept = effect of level 1 of forest factor
+beta2 ~ dnorm(0, 1.0E-06)            # Prior for slope = effect of elevation for level 1 of forest factor
+beta1[1] <- 0                        # Set to zero effect of first level of facFor
+beta3[1] <- 0                        # Set to zero effect of first level of facFor of elevation
+for(k in 2:4){
+   beta1[k] ~ dnorm(0, 1.0E-06)       # Prior for effects of factor facFor
+   beta3[k] ~ dnorm(0, 1.0E-06)       # Prior for effects of factor facFor
+}
+tau <- pow(sd, -2)
+sd ~ dunif(0, 1000)                  # Prior for dispersion on sd scale
+
+# Likelihood
+for (i in 1:M){
+   Cmean[i] ~ dnorm(mu[i], tau)          # precision tau = 1 / variance
+   mu[i] <- alpha + beta1[facFor[i]] + beta2 * elev[i] + beta3[facFor[i]] * elev[i]
+}
+}

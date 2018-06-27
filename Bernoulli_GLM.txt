@@ -1,0 +1,16 @@
+
+model {
+
+# Priors
+for(k in 1:4){
+   alpha[k] <- logit(mean.psi[k])     # intercepts
+   mean.psi[k] ~ dunif(0,1)
+   beta[k] ~ dnorm(0, 1.0E-06)        # slopes
+}
+
+# Likelihood
+for (i in 1:M){
+   y1[i] ~ dbern(theta[i])
+   logit(theta[i]) <- alpha[facFor[i]] + beta[facFor[i]] * elev[i]
+}
+}

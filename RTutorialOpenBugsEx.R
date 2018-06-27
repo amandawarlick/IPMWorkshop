@@ -7,41 +7,6 @@
 #https://www2.isye.gatech.edu/~brani/isyebayes/bank/shortcoursebugs.pdf, https://www.york.ac.uk/che/pdf/2%20Practical%201%20talk.pdf
 
 library(R2OpenBUGS) 
-# 
-# model <- function() { 
-#   # Prior 
-#   p ~ dbeta(1, 1) 
-#   
-#   # Likelihood 
-#   y ~ dbin(p, N) 
-# }
-# 
-# model.file <- file.path(tempdir(), "model.txt") 
-# write.model(model, model.file)
-# 
-# library(MASS) 
-# tbl <- table(survey$Smoke) 
-# N <- as.numeric(sum(tbl))
-# 
-# y <- N - as.numeric(tbl["Never"])
-# 
-# data <- list("N", "y")
-# 
-# params <- c("p")
-# 
-# inits <- function() { 
-#   list(p=0.5) 
-#   }
-# 
-# out <- bugs(data,
-#             inits,
-#             params,
-#             model.file,
-#             n.iter=10000, 
-#             working.directory = "/Users/amandawarlick/.wine/dosdevices/c:/Program Files/WinBUGS14")
-
-# out$mean["p"] 
-# out$sd["p"] 
 
 ###from https://oliviergimenez.github.io/post/run_openbugs_on_mac/
 data(schools)

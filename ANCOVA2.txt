@@ -1,0 +1,25 @@
+
+model {
+
+# Priors
+for(k in 1:4){
+   alpha[k] ~ dnorm(0, 1.0E-06)       # Priors for intercepts
+   beta[k] ~ dnorm(0, 1.0E-06)        # Priors for slopes
+}
+tau <- pow(sd, -2)
+sd ~ dunif(0, 1000)                  # Prior for dispersion on sd scale
+
+# Likelihood
+for (i in 1:M){
+   Cmean[i] ~ dnorm(mu[i], tau)          # precision tau = 1 / variance
+   mu[i] <- alpha[facFor[i]] + beta[facFor[i]] * elev[i]
+}
+
+# Derived quantities: comparison of slopes (now you can forget the delta rule !)
+for(k in 1:4){
+   diff.vs1[k] <- beta[k] - beta[1]    # Differences relative to beta[1]
+   diff.vs2[k] <- beta[k] - beta[2]    # ... relative to beta[2]
+   diff.vs3[k] <- beta[k] - beta[3]    # ... relative to beta[3]
+   diff.vs4[k] <- beta[k] - beta[4]    # ... relative to beta[4]
+}
+}

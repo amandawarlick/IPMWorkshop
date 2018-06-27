@@ -103,3 +103,11 @@ out <- bugs(data = win.data, inits = inits,
             useWINE=TRUE,
             debug = TRUE)
 
+#Chapter 12: N-mix models
+
+R <- 200
+T <- 3
+
+y <- array(dim = c(R, T))
+N <- rpois(n = R, lambda = 2)
+

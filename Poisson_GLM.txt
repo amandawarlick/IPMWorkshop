@@ -1,0 +1,16 @@
+
+model {
+
+# Priors
+for(k in 1:4){
+   alpha[k] ~ dnorm(0, 1.0E-06)       # Prior for intercepts
+   beta[k] ~ dnorm(0, 1.0E-06)        # Prior for slopes
+}
+
+# Likelihood
+for (i in 1:M){
+   Cmax[i] ~ dpois(lambda[i])         # note no variance parameter
+   log(lambda[i]) <- alpha[facFor[i]] + beta[facFor[i]] * elev[i]
+   resi[i] <- (Cmax[i]-lambda[i]) / (sqrt(lambda[i])+e)   # Pearson resi
+}
+}

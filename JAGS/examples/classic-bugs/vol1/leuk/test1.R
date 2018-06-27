@@ -1,0 +1,10 @@
+source("../../R/Rcheck.R")
+d <- read.jagsdata("leuk-data.R")
+inits <- read.jagsdata("leuk-init.R")
+inits$tau <- NULL #not used in this model
+m <- jags.model("leuk.bug", d, inits,  n.chains=2)
+check.data(m, d, skip=c("fail","Y","dN"))
+update(m, 1000)
+x <- coda.samples(m, "beta", n.iter=2000)
+source("bench-test1.R")
+check.fun()

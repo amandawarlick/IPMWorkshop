@@ -1,0 +1,62 @@
+---
+title: "IPM Workshop Notes, Juen 25-29, 2018, Aberdeen"
+output: word_document
+---
+
+*June 25th, 2018*
+
+~ Introduction to hierarchical modeling ~
+
+Way of building models rather than a class of model. Factorization of complex liklihood, not necessarily Bayesian.
+
+Two or more random effects.
+
+Likelihood method packages: lme4, unmarked, secr
+
+Most common GLMs
+- Normal (link = idenity/none)
+- poisson response (link = log) - counts could go to infinity
+- binomial (link = logit) - counts have upper ceiling (can't count more females than number in nest, or can't count more detections than field survey). Bernoulli is a special case where N = 1.
+
+y response described by a normal distribution with mean and variance
+y ~ Normal(alpha + beta*x, sigma)
+
+
+*Random effects*  
+HMs: dependent sequence of random variables (unobs and obs)  
+
+*Bayesian inference*  
+Models exist independent of their methodological analysis type (freq vs. bayes)
+Vague priors often lead to similar estimates to frequentist analysis
+Probability describes data, not params
+
+MLE: unknown is theta, the detection probability - take the one that leads to highest function value (maximizer); not always possible to derive MLE for complex models
+
+Bayes: calculated the probability of the observed parameter, given the data; probability distrubiton measure of variability of things and imperfect knowledge about parameter
+
+Bayes rule: joint probability is conditional*marginal/unconditional
+(prob of both A and B being true divided by prob of B being true)
+(prob of both theta and data divided by prob of data)
+p(theta|data) = posterior
+p(data|theta) = likelihood function
+p(theta) = prior distribution
+
+resulting probability distrubution (p(theta|data)) is estimated for each unknown rather than for single value (MLE)
+
+MCMC algorithm: ratio of proposed value over initial?
+Blind person exploring slant toward and shape of mole hill
+
+predict() function
+
+*June 26*
+
+State-space models - have lots of names, but generally, described by two equations - observation and state
+"hidden Markov" - value of system at a given time point depends on value of previous time point 
+
+Random walk example
+
+When variance of observation process equation is small, that means close to state process/true values
+
+
+
+
