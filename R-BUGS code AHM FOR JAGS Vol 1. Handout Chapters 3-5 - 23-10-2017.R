@@ -230,7 +230,7 @@ plot(forest, lambda, xlab = "Scaled forest cover", main = "Relationship lambda-f
 # Model for observations
 alpha0 <- qlogis(mean.detection)        # mean detection on link scale
 p <- plogis(alpha0 + alpha1*elev + alpha2*wind + alpha3*elev*wind)
-C <- matrix(NA, nrow = M, ncol = J)     # Prepare matrix for counts
+C_jags <- matrix(NA, nrow = M, ncol = J)     # Prepare matrix for counts
 for (i in 1:J){                         # Generate counts by survey
    C[,i] <- rbinom(n = M, size = N, prob = p[,i])
 }
@@ -291,21 +291,21 @@ str(data)
 attach(data)
 
 # Summarize data by taking mean at each site and plot
-(Cmean <- apply(C, 1, mean))
+(Cmean <- apply(data$C, 1, mean))
 par(mfrow = c(1,3))
 hist(Cmean, 50)               # Very skewed
-plot(elev, Cmean)
-plot(forest, Cmean)
+plot(data$elev, Cmean)
+plot(data$forest, Cmean)
 
 # Package the data needed in a bundle
-win.data <- list(Cmean = Cmean, M = length(Cmean), elev = elev, forest = forest)
+win.data <- list(Cmean = Cmean, M = length(Cmean), elev = data$elev, forest = data$forest)
 str(win.data)                    # Check what’s in win.data
 
 
 # Write text file with model description in BUGS language
 #when assigning priors, if fixing it at zero, same as commenting it out
 cat(file = "multiple_linear_regression_model.txt",
-"   # --- Code in BUGS language starts with this quotation mark ---
+"   
 model {
 
 # Priors - define for every parameter (either dnorm with large variance, or uniform dist); inverse in this case because precision is 1/variance
@@ -326,7 +326,7 @@ for (i in 1:M){
 for (i in 1:M){
    resi[i] <- Cmean[i] - mu[i]    
 }
-}"#  --- Code in BUGS language ends on this line ---
+}"
 )
 
 
@@ -773,8 +773,8 @@ for(k in 1:4){
 
 # Likelihood; number of priors (above, 2*1:4 = 8) shows how many parameters
 for (i in 1:M){
-   Cmax[i] ~ dpois(lambda[i])         # note no variance parameter
-   log(lambda[i]) <- alpha[facFor[i]] + beta[facFor[i]] * elev[i]  #log transformation = link function
+   Cmax[i] ~ dpois(lambda[i])         # note no variance parameter for Poisson
+   log(lambda[i]) <- alpha[facFor[i]] +  beta[facFor[i]] * elev[i]  #log transformation = link function
    resi[i] <- (Cmax[i]-lambda[i]) / (sqrt(lambda[i])+e)   # Pearson residuals; standard error
 } #number of parameters is 8 (no variance parameter w/ Pois)
 }
@@ -921,13 +921,11 @@ text(-0.9, 1.1, "B", cex=1.6)
 
 
 
-
-
 ### 5.13 Random-effects Poisson GLM (Poisson GLMM)
 
 # Bundle data
-str(win.data <- list(C = C, M = nrow(C), J = ncol(C), elev = elev, 
-                     forest = forest, elev.forest = elev * forest, wind = wind) )
+str(win.data <- list(C = data$C, M = nrow(data$C), J = ncol(data$C), elev = data$elev, 
+                     forest = data$forest, elev.forest = data$elev * data$forest, wind = data$wind) )
 
 # Specify model in BUGS language
 cat(file = "RE.Poisson.txt","
@@ -963,17 +961,19 @@ params <- c("mu.alpha", "sd.alpha", "alpha0", "alpha", "re0") # Params
 ni <- 30000 ; nt <- 25 ; nb <- 5000 ; nc <- 3                 # MCMC settings
 
 # Call JAGS from R (ART 6-7 min) and summarize posteriors
-out8 <- jags(win.data, inits, params, "RE.Poisson.txt", 
+out8 <- jags(win.data, 
+             #inits, 
+             parameters.to.save = params, model.file = "RE.Poisson.txt", 
              n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb, parallel = TRUE)
 par(mfrow = c(3,2))  ;  traceplot(out8, c("mu.alpha", "sd.alpha", "alpha[1:3]"))
 
 print(out8, 3)
 
-Cvec <- as.vector(C)            # Vector of M*J counts
-elev.vec <- rep(elev, J)        # Vectorized elevation covariate
-forest.vec <- rep(forest, J)    # Vectorized forest covariate
-wind.vec <- as.vector(wind)     # Vectorized wind covariate
-fac.site <- factor(rep(1:M, J)) # Site indicator (factor)
+Cvec <- as.vector(data$C)            # Vector of M*J counts
+elev.vec <- rep(data$elev, data$J)        # Vectorized elevation covariate
+forest.vec <- rep(data$forest, data$J)    # Vectorized forest covariate
+wind.vec <- as.vector(data$wind)     # Vectorized wind covariate
+fac.site <- factor(rep(1:data$M, data$J)) # Site indicator (factor)
 cbind(Cvec, fac.site, elev.vec, forest.vec, wind.vec) # Look at data
 
 # Fit same model using maximum likelihood (NOTE: glmer uses ML instead of REML)
@@ -983,7 +983,7 @@ ranef(fm)                       # Print zero-centered random effects
 
 # We compare the fixed-effects estimates in a table below, and also the random-effects estimates from the Bayesian and the non-Bayesian analyses in a table and a graph (Fig. 5–17A).
 
-# Compare fixed-effects estimates (in spite of the confusing naming in glmer output), Bayesian post. means and sd left, frequentist MLEs and SEs right
+# Compare fixed-effects estimates, Bayesian post. and freq LMEs
 print(cbind(out8$summary[c(1:2, 270:273), 1:2], rbind(summary(fm)$coef[1,1:2], c(sqrt(summary(fm)$varcor$fac.site), NA), summary(fm)$coef[c(2,3,5,4),1:2])), 3)
 
 # Compare graphically non-Bayesian and Bayesian random effects estimates

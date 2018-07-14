@@ -57,6 +57,23 @@ Random walk example
 
 When variance of observation process equation is small, that means close to state process/true values
 
+*June 27*
 
+Mark-Recapture Models
 
+Assessing how many of those marked individuals are still there, for a survival probability.
+
+Problem: detection < 1.0, so assume dead when just not detected. Must distinguish between survival probability and detection probability.
+
+*June 28*
+
+Matrix projection models - Leslie matrix - combo of population size at t and reproduction - demographic rates go inside.
+
+Benefits of IPM
+- increased precision of parameter estimates due to more efficient use of data
+- estimate demographic parameters for which we don't have explicit data
+
+*Tips*
+
+To encourage/facilitate convergence, make priors more informative/smaller distribution
 

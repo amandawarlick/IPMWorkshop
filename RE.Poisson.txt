@@ -10,12 +10,18 @@ for(k in 1:4){
 }
 
 # Likelihood
+#intercept, slopes for elev and wind speed; but counts aren't independent of site (random site effect)
+#random site effect - directly index intercept (alpha0[i]) = fixed, but assign distribution to make it random
+#thus the line in the prior line alpha0[i] ~ dnorm(mu, tau)
+#estimates different for each combination of i and j [i,j]; lambda is mean central structure
+#alpha0 is the only one indexed to be different for each site and occassion
 for (i in 1:M){
    alpha0[i] ~ dnorm(mu.alpha, tau.alpha) # Random effects and hyperparams
    re0[i] <- alpha0[i] - mu.alpha         # zero-centered random effects
    for(j in 1:J){
-      C[i,j] ~ dpois(lambda[i,j])
-      log(lambda[i,j]) <- alpha0[i] + alpha[1] * elev[i] + alpha[2] * forest[i] + alpha[3] * elev.forest[i] + alpha[4] * wind[i,j]
+      C[i,j] ~ dpois(lambda[i,j]) 
+      log(lambda[i,j]) <- alpha0[i] + alpha[1] * elev[i] + alpha[2] * forest[i] + 
+alpha[3] * elev.forest[i] + alpha[4] * wind[i,j]
    }
 }
 }

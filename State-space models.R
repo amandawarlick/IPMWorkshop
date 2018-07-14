@@ -528,6 +528,9 @@ points(y = c(180, 202, 224, 203, 194), x = c(21, 22, 23, 24, 25), col = "black",
 # Exercise 1: From year 1 to 10 a different data sampling protocol than in years 11 to 20 has ben used. 
 #Adapt the model to account for possible different observation errors
 
+#solution 1a: break up observation process loop into two different time periods or
+#solution 1b: use categorical covariate
+
 cat(file = "ssm.jags", "
     model {
     # Priors and constraints
@@ -536,11 +539,18 @@ cat(file = "ssm.jags", "
     sigma.proc ~ dunif(0, 1)             # Prior for sd of state process
     sigma2.proc <- pow(sigma.proc, 2)
     tau.proc <- pow(sigma.proc, -2)
-    sigma.obs ~ dunif(0, 1)              # Prior for sd of observation process
-    sigma2.obs <- pow(sigma.obs, 2)
+
+    sigma.obs1 ~ dunif(0, 1)              # Prior for sd of observation process
+    sigma2.obs1 <- pow(sigma.obs, 2)
     tau.obs <- pow(sigma.obs, -2)
-    
+
+    sigma.obs2 ~ dunif(0, 1)              # Prior for sd of observation process
+    sigma2.ob2 <- pow(sigma.obs1, 2)
+    tau.obs <- pow(sigma.obs, -2)
+  
+
     # Likelihood
+
     # State process
     for (t in 1:(T-1)){
     r[t] ~ dnorm(mean.r, tau.proc)
@@ -548,7 +558,7 @@ cat(file = "ssm.jags", "
     }
     # Observation process
     for (t in 1:T) {
-    y[t] ~ dnorm(logN.est[t], tau.obs)
+    y[t] ~ dnorm(logN.est[t], tau.obs[survey[t]]) #add covariate for survey type
     }
     
     # Population sizes on real scale

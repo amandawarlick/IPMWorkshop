@@ -1,0 +1,1637 @@
+########################################################################
+#
+# Solution for exercises
+#
+###########################################################################
+#
+# IPM workshop Aberdeen June 2018
+#
+###########################################################################
+
+
+# Load packages
+library(jagsUI)
+
+
+###########################################################################
+#
+# State-space models
+#
+###########################################################################
+
+
+# Exercise 1: 
+
+# From year 1 to 10 a different data sampling protocol than in years 11 to 20 has ben used. Adapt the model to account for possible different observation errors
+
+
+
+# Solution 1a: split the loop for the observation process in two parts
+
+# Specify model in BUGS language
+cat(file = "ssm.jags", "
+model {
+# Priors and constraints
+logN.est[1] ~ dnorm(5.6, 0.01)       # Prior for initial population size
+mean.r ~ dnorm(0, 0.001)             # Prior for mean growth rate
+sigma.proc ~ dunif(0, 1)             # Prior for sd of state process
+sigma2.proc <- pow(sigma.proc, 2)
+tau.proc <- pow(sigma.proc, -2)
+
+sigma.obs1 ~ dunif(0, 1)              # Prior for sd of observation process
+sigma2.obs1 <- pow(sigma.obs1, 2)
+tau.obs1 <- pow(sigma.obs1, -2)
+
+sigma.obs2 ~ dunif(0, 1)              # Prior for sd of observation process
+sigma2.obs2 <- pow(sigma.obs2, 2)
+tau.obs2 <- pow(sigma.obs2, -2)
+
+# Likelihood
+# State process
+for (t in 1:(T-1)){
+   r[t] ~ dnorm(mean.r, tau.proc)
+   logN.est[t+1] <- logN.est[t] + r[t]
+   }
+# Observation process
+for (t in 1:10) {
+   y[t] ~ dnorm(logN.est[t], tau.obs1)
+   }
+for (t in 11:T) {
+   y[t] ~ dnorm(logN.est[t], tau.obs2)
+   }
+
+# Population sizes on real scale
+for (t in 1:T) {
+   N.est[t] <- exp(logN.est[t])
+   }
+}
+")
+
+# House martin population data from Magden
+pyears <- 7 # Number of future years with predictions
+hm <- c(271, 261, 309, 318, 231, 216, 208, 226, 195, 226, 233, 209, 226, 192, 191, 225, 245, 205, 191, 174, rep(NA, pyears))
+year <- 1990:(2009 + pyears)
+
+
+# Bundle data
+jags.data <- list(y = log(hm), T = length(year))
+
+# Initial values
+inits <- function(){list(sigma.proc = runif(1, 0, 1), mean.r = rnorm(1), sigma.obs1 = runif(1, 0, 1), logN.est = c(rnorm(1, 5.6, 0.1), rep(NA, (length(year)-1))))}
+
+# Parameters monitored
+parameters <- c("r", "mean.r", "sigma2.obs1", "sigma2.obs2", "sigma2.proc", "N.est")
+
+# MCMC settings
+ni <- 20000
+nt <- 1
+nb <- 10000
+nc <- 3
+
+# Call JAGS from R (BRT 3 min)
+hm.ssm <- jags(jags.data, inits, parameters, "ssm.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+# Summarize posteriors
+print(hm.ssm, digits = 3)
+
+
+
+# Solution 1b: use a categorical covariate and apply a linear model for the observation variance
+
+
+# Specify model in BUGS language
+cat(file = "ssm.jags", "
+model {
+# Priors and constraints
+logN.est[1] ~ dnorm(5.6, 0.01)       # Prior for initial population size
+mean.r ~ dnorm(0, 0.001)             # Prior for mean growth rate
+sigma.proc ~ dunif(0, 1)             # Prior for sd of state process
+sigma2.proc <- pow(sigma.proc, 2)
+tau.proc <- pow(sigma.proc, -2)
+
+for (i in 1:2){
+sigma.obs[i] ~ dunif(0, 1)              # Prior for sd of observation process
+sigma2.obs[i] <- pow(sigma.obs[i], 2)
+tau.obs[i] <- pow(sigma.obs[i], -2)
+}
+
+# Likelihood
+# State process
+for (t in 1:(T-1)){
+   r[t] ~ dnorm(mean.r, tau.proc)
+   logN.est[t+1] <- logN.est[t] + r[t]
+   }
+# Observation process
+for (t in 1:T) {
+   y[t] ~ dnorm(logN.est[t], tau.obs[survey[t]])
+   }
+
+# Population sizes on real scale
+for (t in 1:T) {
+   N.est[t] <- exp(logN.est[t])
+   }
+}
+")
+
+# House martin population data from Magden
+pyears <- 7 # Number of future years with predictions
+hm <- c(271, 261, 309, 318, 231, 216, 208, 226, 195, 226, 233, 209, 226, 192, 191, 225, 245, 205, 191, 174, rep(NA, pyears))
+year <- 1990:(2009 + pyears)
+
+# Create a categorical covariate: 1 indiciates a year with the first survey type, 2 a year with the second survey type
+survey <- c(rep(1, 10), rep(2, (length(hm)-10)))
+
+
+# Bundle data: need to include the categorical covariate "survey"
+jags.data <- list(y = log(hm), T = length(year), survey = survey)
+
+# Initial values
+inits <- function(){list(sigma.proc = runif(1, 0, 1), mean.r = rnorm(1), sigma.obs = runif(2, 0, 1), logN.est = c(rnorm(1, 5.6, 0.1), rep(NA, (length(year)-1))))}
+
+# Parameters monitored
+parameters <- c("r", "mean.r", "sigma2.obs", "sigma2.proc", "N.est")
+
+# MCMC settings
+ni <- 200000
+nt <- 3
+nb <- 100000
+nc <- 3
+
+# Call JAGS from R (BRT 3 min)
+hm.ssm <- jags(jags.data, inits, parameters, "ssm.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+# Summarize posteriors
+print(hm.ssm, digits = 3)
+
+
+
+###########################################################################
+
+# Exercise 2
+
+# Model the population growth rate of the house martins as a function of rainfall during the summer.
+
+# Data on precipitation 1990 - 2009
+May <- c(33.1, 42.8, 33.7, 89.8, 172.7, 180.7, 89.2, 59.1, 49.5, 141.3, 54.6, 117.8, 142.5, 80.4, 50.9, 98.3, 140.9, 160.2, 74.6, 86.7)
+June <- c(155.0, 138.8, 124.4, 89.4, 49.7, 45.5, 77.9, 133.2, 75.0, 126.4, 67.4, 120.4, 79.3, 21.0, 70.1, 84.2, 76.3, 183.1, 34.3, 65.9)
+rain <- May + June
+
+
+# Solution
+
+# Specify model in BUGS language
+cat(file = "ssm.jags", "
+model {
+# Priors and constraints
+logN.est[1] ~ dnorm(5.6, 0.01)       # Prior for initial population size
+mean.r ~ dnorm(0, 0.001)             # Prior for mean growth rate
+beta ~ dnorm(0, 0.001)
+sigma.proc ~ dunif(0, 1)             # Prior for sd of state process
+sigma2.proc <- pow(sigma.proc, 2)
+tau.proc <- pow(sigma.proc, -2)
+sigma.obs ~ dunif(0, 1)              # Prior for sd of observation process
+sigma2.obs <- pow(sigma.obs, 2)
+tau.obs <- pow(sigma.obs, -2)
+
+# Likelihood
+# State process
+for (t in 1:(T-1)){
+   r[t] <- mean.r + beta * rain[t] + eps[t]     # Linear model for the population growth rate
+   eps[t] ~ dnorm(0, tau.proc)                  # Random noise of the population growth rate (part that is NOT explained by rainfall)
+   logN.est[t+1] <- logN.est[t] + r[t]
+   }
+# Observation process
+for (t in 1:T) {
+   y[t] ~ dnorm(logN.est[t], tau.obs)
+   }
+
+# Population sizes on real scale
+for (t in 1:T) {
+   N.est[t] <- exp(logN.est[t])
+   }
+}
+")
+
+# House martin population data from Magden
+# Note that we have excluded the 7 years in future (the NA), because we here do not want to make a prediction into the future
+hm <- c(271, 261, 309, 318, 231, 216, 208, 226, 195, 226, 233, 209, 226, 192, 191, 225, 245, 205, 191, 174)
+year <- 1990:2009
+
+# Bundle data
+jags.data <- list(y = log(hm), T = length(year), rain = rain)
+
+# Initial values
+inits <- function(){list(sigma.proc = runif(1, 0, 1), mean.r = rnorm(1), sigma.obs = runif(1, 0, 1), logN.est = c(rnorm(1, 5.6, 0.1), rep(NA, (length(year)-1))))}
+
+# Parameters monitored
+parameters <- c("r", "mean.r", "sigma2.obs", "sigma2.proc", "N.est", "beta")
+
+# MCMC settings
+ni <- 200000
+nt <- 6
+nb <- 100000
+nc <- 3
+
+# Call JAGS from R (BRT 3 min)
+hm.ssm2 <- jags(jags.data, inits, parameters, "ssm.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+# Summarize posteriors
+print(hm.ssm2, digits = 3)
+
+
+###########################################################################
+
+# Exercise 3
+
+# Assume that we know (or have a predction) precipitation in the future: what is our prediction of the house martin population?
+
+# Data from 1990 to 2016
+May <- c(33.1, 42.8, 33.7, 89.8, 172.7, 180.7, 89.2, 59.1, 49.5, 141.3, 54.6, 117.8, 142.5, 80.4, 50.9, 98.3, 140.9, 160.2, 74.6, 86.7, 140.5, 48.4, 66.5, 99.4, 70, 92.1, 154.7)
+June <- c(155.0, 138.8, 124.4, 89.4, 49.7, 45.5, 77.9, 133.2, 75.0, 126.4, 67.4, 120.4, 79.3, 21.0, 70.1, 84.2, 76.3, 183.1, 34.3, 65.9, 65.4, 96.9, 134.3, 64.5, 59.4, 94.5, 176.2)
+rain <- May + June
+
+
+# Solution
+
+# Here we provide another way how to make predictions into the future. Before we added NA to the data, which is akin as we have missing values. Now we simply extend the loop of the state-process by so many years as we like to get predictions. Both approaches give the same result.
+
+
+# Specify model in BUGS language
+cat(file = "ssm.jags", "
+model {
+# Priors and constraints
+logN.est[1] ~ dnorm(5.6, 0.01)       # Prior for initial population size
+mean.r ~ dnorm(0, 0.001)             # Prior for mean growth rate
+beta ~ dnorm(0, 0.001)
+sigma.proc ~ dunif(0, 1)             # Prior for sd of state process
+sigma2.proc <- pow(sigma.proc, 2)
+tau.proc <- pow(sigma.proc, -2)
+sigma.obs ~ dunif(0, 1)              # Prior for sd of observation process
+sigma2.obs <- pow(sigma.obs, 2)
+tau.obs <- pow(sigma.obs, -2)
+
+# Likelihood
+# State process
+for (t in 1:(T-1+K)){                           # Note: loop extended in order to make predictions into the future
+   r[t] <- mean.r + beta * rain[t] + eps[t]     # Linear model for the population growth rate
+   eps[t] ~ dnorm(0, tau.proc)                  # Random noise of the population growth rate (part that is NOT explained by rainfall)
+   logN.est[t+1] <- logN.est[t] + r[t]
+   }
+# Observation process
+for (t in 1:T) {
+   y[t] ~ dnorm(logN.est[t], tau.obs)
+   }
+
+# Population sizes on real scale
+for (t in 1:(T+K)) {
+   N.est[t] <- exp(logN.est[t])
+   }
+}
+")
+
+# House martin population data from Magden
+hm <- c(271, 261, 309, 318, 231, 216, 208, 226, 195, 226, 233, 209, 226, 192, 191, 225, 245, 205, 191, 174)
+year <- 1990:2016
+
+# Bundle data
+jags.data <- list(y = log(hm), T = length(hm), K = length(rain)-length(hm), rain = rain)
+
+# Initial values
+inits <- function(){list(sigma.proc = runif(1, 0, 1), mean.r = rnorm(1), sigma.obs = runif(1, 0, 1))}
+
+# Parameters monitored
+parameters <- c("r", "mean.r", "sigma2.obs", "sigma2.proc", "N.est", "beta")
+
+# MCMC settings
+ni <- 200000
+nt <- 6
+nb <- 100000
+nc <- 3
+
+# Call JAGS from R (BRT 3 min)
+hm.ssm3 <- jags(jags.data, inits, parameters, "ssm.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+# Summarize posteriors
+print(hm.ssm3, digits = 3)
+
+
+# Draw figure
+fitted <- lower <- upper <- numeric()
+n.years <- length(year)
+for (i in 1:n.years){
+   fitted[i] <- mean(hm.ssm3$sims.list$N.est[,i])
+   lower[i] <- quantile(hm.ssm3$sims.list$N.est[,i], 0.025)
+   upper[i] <- quantile(hm.ssm3$sims.list$N.est[,i], 0.975)}
+m1 <- min(c(fitted, hm, lower), na.rm = TRUE)
+m2 <- max(c(fitted, hm, upper), na.rm = TRUE)
+par(mar = c(4.5, 4, 1, 1))
+plot(0, 0, ylim = c(m1, m2), xlim = c(1, n.years), ylab = "Population size", xlab = "Year", col = "black", type = "l", lwd = 2, axes = FALSE, frame = FALSE)
+axis(2, las = 1)
+axis(1, at = 1:n.years, labels = year)
+polygon(x = c(1:n.years, n.years:1), y = c(lower, upper[n.years:1]), col = "gray90", border = "gray90")
+points(hm, type = "l", col = "black", lwd = 2)
+points(fitted, type = "l", col = "blue", lwd = 2)
+legend(x = 1, y = 150, legend = c("Counts", "Estimates"), lty = c(1, 1), lwd = c(2, 2), col = c("black", "blue"), bty = "n", cex = 1)
+
+
+###########################################################################
+
+# Exercise 4
+
+# Assume that we have an estimate (mean and measure of uncertainty) for the precipitation in the future: what is our prediction of the house martin population? 
+
+# Data from 1990 to 2016
+May <- c(33.1, 42.8, 33.7, 89.8, 172.7, 180.7, 89.2, 59.1, 49.5, 141.3, 54.6, 117.8, 142.5, 80.4, 50.9, 98.3, 140.9, 160.2, 74.6, 86.7, 140.5, 48.4, 66.5, 99.4, 70, 92.1, 154.7)
+June <- c(155.0, 138.8, 124.4, 89.4, 49.7, 45.5, 77.9, 133.2, 75.0, 126.4, 67.4, 120.4, 79.3, 21.0, 70.1, 84.2, 76.3, 183.1, 34.3, 65.9, 65.4, 96.9, 134.3, 64.5, 59.4, 94.5, 176.2)
+rain <- May + June
+# Accuracy of the predictions in the future
+sd.rain <- c(5, 5, 5, 10, 10, 20, 20)
+
+
+# Solution
+
+# We now split the state-process in two parts: the first part refer to the years with data, the second part to the prediction into the future.
+# For the prediction into the future, we have first to generate the rainfall, because this is unknown (we just have a mean and a SD)
+# Once rainfall is generated, the predition of the population growth rate (and population size) into the future can be done.
+
+# Specify model in BUGS language
+cat(file = "ssm.jags", "
+model {
+# Priors and constraints
+logN.est[1] ~ dnorm(5.6, 0.01)       # Prior for initial population size
+mean.r ~ dnorm(0, 0.001)             # Prior for mean growth rate
+beta ~ dnorm(0, 0.001)
+sigma.proc ~ dunif(0, 1)             # Prior for sd of state process
+sigma2.proc <- pow(sigma.proc, 2)
+tau.proc <- pow(sigma.proc, -2)
+sigma.obs ~ dunif(0, 1)              # Prior for sd of observation process
+sigma2.obs <- pow(sigma.obs, 2)
+tau.obs <- pow(sigma.obs, -2)
+
+# Likelihood
+# State process
+# For the past
+for (t in 1:(T-1)){
+   r[t] <- mean.r + beta * rain[t] + eps[t]
+   eps[t] ~ dnorm(0, tau.proc)
+   logN.est[t+1] <- logN.est[t] + r[t]
+   }
+
+# For the future
+for (t in T:(T-1+K)){
+   # Generate a rain fall value
+   rain.future[t-T+1] ~ dnorm(rain[t], tau.rain[t-T+1])        # Generate rainfall: technically by using an informative prior 
+   r[t] <- mean.r + beta * rain.future[t-T+1] + eps[t]         # Linear model for population growth rate
+   eps[t] ~ dnorm(0, tau.proc)
+   logN.est[t+1] <- logN.est[t] + r[t]
+   tau.rain[t-T+1] <- 1/(sd.rain[t-T+1] * sd.rain[t-T+1])
+   }
+
+# Observation process
+for (t in 1:T) {
+   y[t] ~ dnorm(logN.est[t], tau.obs)
+   }
+
+# Population sizes on real scale
+for (t in 1:(T+K)) {
+   N.est[t] <- exp(logN.est[t])
+   }
+}
+")
+
+# House martin population data from Magden
+hm <- c(271, 261, 309, 318, 231, 216, 208, 226, 195, 226, 233, 209, 226, 192, 191, 225, 245, 205, 191, 174)
+year <- 1990:2016
+
+# Bundle data
+jags.data <- list(y = log(hm), T = length(hm), K = length(rain)-length(hm), rain = rain, sd.rain = sd.rain)
+
+# Initial values
+inits <- function(){list(sigma.proc = runif(1, 0, 1), mean.r = rnorm(1), sigma.obs = runif(1, 0, 1))}
+
+# Parameters monitored
+parameters <- c("r", "mean.r", "sigma2.obs", "sigma2.proc", "N.est", "beta", "rain.future")
+
+# MCMC settings
+ni <- 200000
+nt <- 6
+nb <- 100000
+nc <- 3
+
+# Call JAGS from R (BRT 3 min)
+hm.ssm4 <- jags(jags.data, inits, parameters, "ssm.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+# Summarize posteriors
+print(hm.ssm4, digits = 3)
+
+
+# Draw figure
+fitted <- lower <- upper <- numeric()
+n.years <- length(year)
+for (i in 1:n.years){
+   fitted[i] <- mean(hm.ssm4$sims.list$N.est[,i])
+   lower[i] <- quantile(hm.ssm4$sims.list$N.est[,i], 0.025)
+   upper[i] <- quantile(hm.ssm4$sims.list$N.est[,i], 0.975)}
+m1 <- min(c(fitted, hm, lower), na.rm = TRUE)
+m2 <- max(c(fitted, hm, upper), na.rm = TRUE)
+par(mar = c(4.5, 4, 1, 1))
+plot(0, 0, ylim = c(m1, m2), xlim = c(1, n.years), ylab = "Population size", xlab = "Year", col = "black", type = "l", lwd = 2, axes = FALSE, frame = FALSE)
+axis(2, las = 1)
+axis(1, at = 1:n.years, labels = year)
+polygon(x = c(1:n.years, n.years:1), y = c(lower, upper[n.years:1]), col = "gray90", border = "gray90")
+points(hm, type = "l", col = "black", lwd = 2)
+points(fitted, type = "l", col = "blue", lwd = 2)
+legend(x = 1, y = 150, legend = c("Counts", "Estimates"), lty = c(1, 1), lwd = c(2, 2), col = c("black", "blue"), bty = "n", cex = 1)
+
+
+
+###########################################################################
+#
+# Cormack-Jolly-Seber models
+#
+###########################################################################
+
+# Exercise 1
+
+# Analyse real CR data of female Leisler's bats (7.11)
+
+# m-array obtained from 18 marked female Leisler's bats from Thuringia (Germany) with 19 capture occasions
+m.leisleri <- matrix(c(4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,
+                       0,5,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,
+                       0,0,9,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,
+                       0,0,0,10,2,0,0,0,0,0,0,0,0,0,0,0,0,0,5,
+                       0,0,0,0,10,2,1,0,0,0,0,0,0,0,0,0,0,0,6,
+                       0,0,0,0,0,15,0,0,0,0,0,0,0,0,0,0,0,0,6,
+                       0,0,0,0,0,0,11,2,0,1,0,0,0,0,0,0,0,0,19,
+                       0,0,0,0,0,0,0,12,1,1,0,0,0,0,0,0,0,0,6,
+                       0,0,0,0,0,0,0,0,13,2,0,0,0,0,0,0,0,0,4,
+                       0,0,0,0,0,0,0,0,0,14,0,0,0,0,0,0,0,0,6,
+                       0,0,0,0,0,0,0,0,0,0,13,1,0,0,0,1,0,0,8,
+                       0,0,0,0,0,0,0,0,0,0,0,15,3,1,0,0,0,0,12,
+                       0,0,0,0,0,0,0,0,0,0,0,0,12,4,0,1,0,0,7,
+                       0,0,0,0,0,0,0,0,0,0,0,0,0,19,2,0,0,0,3,
+                       0,0,0,0,0,0,0,0,0,0,0,0,0,0,28,1,0,0,4,
+                       0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,22,7,2,21,
+                       0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,12,2,21,
+                       0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,14,18), 
+                     ncol = 19, nrow = 18, byrow = TRUE)
+
+# Estimate mean annual survival and temporal variance, assuming constant capture probability
+
+# Assess model with Bayesian p-value calculated with a Freeman-Tukey measure of discrepancy
+
+# Model phi(t-RE)p(.)   (temporal random effects)
+
+
+# Specify model in BUGS language
+cat(file = "cjs-mnl.txt", "
+model {
+
+    # Priors and constraints
+    for (t in 1:(n.occasions-1)){
+       phi[t] <- ilogit(logit.phi[t])
+       logit.phi[t] ~ dnorm(mu.phi, tau)       
+       p[t] <- mean.p           # Priors for recapture
+       }
+    mu.phi ~ dnorm(0, 0.001)
+    mean.phi <- ilogit(mu.phi)
+    sd.phi ~ dunif(0, 5)
+    tau <- 1 / (sd.phi * sd.phi)
+    mean.p ~ dunif(0, 1)
+
+    # Define the multinomial likelihood
+    for (t in 1:(n.occasions-1)){
+       marr[t,1:n.occasions] ~ dmulti(pr[t, ], rel[t])
+       }
+
+    # Define the cell probabilities of the m-array
+    for (t in 1:(n.occasions-1)){
+       q[t] <- 1-p[t]                # Probability of non-recapture
+
+       # Main diagonal
+       pr[t,t] <- phi[t]*p[t]
+      
+       # Above main diagonal
+       for (j in (t+1):(n.occasions-1)){
+          pr[t,j] <- prod(phi[t:j])*prod(q[t:(j-1)])*p[j]
+          } #j
+
+       # Below main diagonal
+       for (j in 1:(t-1)){
+          pr[t,j] <- 0
+          } #j
+       } #t
+
+    # Last column: probability of non-recapture
+    for (t in 1:(n.occasions-1)){
+       pr[t,n.occasions] <- 1-sum(pr[t,1:(n.occasions-1)])
+       } #t
+    
+    # Assess model fit using Freeman-Tukey statistic [can be done offline]
+    
+    # Compute fit statistics for observed data
+    for (t in 1:(n.occasions-1)){
+       for (j in 1:n.occasions){
+          expmarr[t,j] <- rel[t]*pr[t,j]
+          E.org[t,j] <- pow((pow(marr[t,j], 0.5)-pow(expmarr[t,j], 0.5)), 2)
+          } #j
+       } #t
+
+    # Generate replicate data and compute fit stats from them
+    for (t in 1:(n.occasions-1)){
+       marr.new[t,1:n.occasions] ~ dmulti(pr[t, ], rel[t])
+       for (j in 1:n.occasions){
+          E.new[t,j] <- pow((pow(marr.new[t,j], 0.5)-pow(expmarr[t,j], 0.5)), 2)
+          } #j
+       } #t
+    fit <- sum(E.org[,])
+    fit.new <- sum(E.new[,])
+}
+")
+
+
+# Bundle data
+jags.data <- list(marr = m.leisleri, n.occasions = ncol(m.leisleri), rel = rowSums(m.leisleri))
+
+# Initial values
+inits <- function(){list(mean.p = runif(1, 0, 1))}  
+
+# Parameters monitored
+parameters <- c("phi", "mean.p", "mean.phi", "sd.phi", "fit", "fit.new")
+
+# MCMC settings
+ni <- 5000
+nt <- 3
+nb <- 2500
+nc <- 3
+
+# Call JAGS from R (BRT 1 min)
+cjs <- jags(jags.data, inits, parameters, "cjs-mnl.txt", 
+            n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb, parallel = TRUE)
+
+print(cjs, digits = 3) 
+
+# Inspect GOF
+mean(cjs$sims.list$fit < cjs$sims.list$fit.new)
+plot(cjs$sims.list$fit, cjs$sims.list$fit.new)
+segments(0,0,100,100)
+
+
+
+###########################################################################
+#
+# Multistate capture-recapture models
+#
+###########################################################################
+
+
+# Exercise 1:
+
+# Write the multistate model in such a way that survival in A is time-dependent (fixed time effect) and survival at site B it is time-dependent with a random temporal effect.
+
+# Load data
+
+data <- read.csv("Multistate.csv", sep = ";")
+ch <- as.matrix(data)
+
+
+# Solution 1: use the state-space likelihood
+
+cat(file = "state-space-ms.jags", "
+model {
+
+# -------------------------------------------------
+# Parameters:
+# phiA: survival probability at site A
+# phiB: survival probability at site B
+# psiAB: movement probability from site A to site B
+# psiBA: movement probability from site B to site A
+# pA: recapture probability at site A
+# pB: recapture probability at site B
+# -------------------------------------------------
+# States (S):
+# 1 alive at A
+# 2 alive at B
+# 3 dead
+# Observations (O):  
+# 1 seen at A 
+# 2 seen at B
+# 3 not seen
+# -------------------------------------------------
+
+# Priors and constraints
+for (t in 1:(n.occasions-1)){
+   phiA[t] ~ dunif(0, 1)
+   phiB[t] <- ilogit(logit.phiB[t])
+   logit.phiB[t] ~ dnorm(mu.phiB, tau)
+   psiAB[t] <- mean.psi[1]
+   psiBA[t] <- mean.psi[2]
+   pA[t] <- mean.p[1]
+   pB[t] <- mean.p[2]
+   }
+
+mean.phiB ~ dunif(0, 1)
+mu.phiB <- logit(mean.phiB)
+for (u in 1:2){
+   mean.psi[u] ~ dunif(0, 1)    # Priors for mean transitions
+   mean.p[u] ~ dunif(0, 1)      # Priors for mean state-spec. recapture
+   }
+sigma.phiB ~ dunif(0, 5)
+tau <- pow(sigma.phiB, -2)
+
+# Define state-transition and observation matrices
+for (i in 1:nind){  
+   # Define probabilities of state S(t+1) given S(t)
+   for (t in f[i]:(n.occasions-1)){
+      ps[1,i,t,1] <- phiA[t] * (1-psiAB[t])
+      ps[1,i,t,2] <- phiA[t] * psiAB[t]
+      ps[1,i,t,3] <- 1-phiA[t]
+      ps[2,i,t,1] <- phiB[t] * psiBA[t]
+      ps[2,i,t,2] <- phiB[t] * (1-psiBA[t])
+      ps[2,i,t,3] <- 1-phiB[t]
+      ps[3,i,t,1] <- 0
+      ps[3,i,t,2] <- 0
+      ps[3,i,t,3] <- 1
+      
+      # Define probabilities of O(t) given S(t)
+      po[1,i,t,1] <- pA[t]
+      po[1,i,t,2] <- 0
+      po[1,i,t,3] <- 1-pA[t]
+      po[2,i,t,1] <- 0
+      po[2,i,t,2] <- pB[t]
+      po[2,i,t,3] <- 1-pB[t]
+      po[3,i,t,1] <- 0
+      po[3,i,t,2] <- 0
+      po[3,i,t,3] <- 1
+      } #t
+   } #i
+
+# Likelihood 
+for (i in 1:nind){
+   # Define latent state at first capture
+   z[i,f[i]] <- y[i,f[i]]
+   for (t in (f[i]+1):n.occasions){
+      # State process: draw S(t) given S(t-1)
+      z[i,t] ~ dcat(ps[z[i,t-1], i, t-1,])
+      # Observation process: draw O(t) given S(t)
+      y[i,t] ~ dcat(po[z[i,t], i, t-1,])
+      } #t
+   } #i
+}
+")
+
+
+# Data preparation
+get.first <- function(x) min(which(x!=0))
+f <- apply(ch, 1, get.first)
+
+# Recode ch matrix: note, a 0 is not allowed!
+# 1 = seen alive in A, 2 = seen alive in B, 3 = not seen
+rch <- ch          # Recoded ch
+rch[rch==0] <- 3
+
+# Bundle data 
+jags.data <- list(y = rch, f = f, n.occasions = ncol(rch), nind = nrow(rch))
+
+
+# Initial values
+# Function to create initial values for unknown z
+ms.init.z <- function(ch, f){
+   states <- max(ch, na.rm = TRUE)
+   known.states <- 1:(states-1)
+   v <- which(ch==states)
+   ch[v] <- sample(known.states, length(v), replace = TRUE)   
+   for (i in 1:nrow(ch)){ch[i,1:f[i]] <- NA}
+   return(ch)
+   }
+
+inits <- function(){list(mean.psi = runif(2, 0, 1), mean.p = runif(2, 0, 1), z = ms.init.z(rch, f))}  
+
+# Parameters monitored
+parameters <- c("phiA", "phiB", "mean.phiB", "sigma.phiB", "mean.psi", "mean.p")
+
+# MCMC settings
+ni <- 4000
+nt <- 1
+nb <- 2000
+nc <- 3
+
+# Call JAGS from R
+ms <- jags(jags.data, inits, parameters, "state-space-ms.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+# Inspect results
+par(mfrow = c(3,3))
+traceplot(ms)
+
+print(ms, digits = 3)
+
+
+# Solution 2: use the multinomial likelihood
+
+
+
+###############################################
+
+# 2. Approach: multinomial likelihood
+
+# convert the individual capture histories into the m-array format
+
+marray <- function(ch, unobs = 0){
+   ns <- length(table(ch)) - 1 + unobs
+   no <- ncol(ch)
+   out <- matrix(0, ncol = ns*(no-1)+1, nrow = ns*(no-1))
+   # Remove capture histories of individuals that are marked at last occasion
+   get.first <- function(x) min(which(x!=0))
+   first <- apply(ch, 1, get.first)
+   last.only <- which(first==no)
+   if (length(last.only) > 0) ch <- ch[-last.only,]
+   # Compute m-array
+   for (i in 1:nrow(ch)){
+      cap.occ <- which(ch[i,]!=0)
+      state <- ch[i,cap.occ]
+      if (length(state) == 1) {
+         out[state[1]+ns*(cap.occ[1]-1), ns*(no-1)+1] <- out[state[1]+ns*(cap.occ[1]-1), ns*(no-1)+1] + 1
+         }
+      if (length(state) > 1) {
+         for (t in 2:length(cap.occ)){
+            out[(cap.occ[t-1]-1)*ns+state[t-1], (cap.occ[t]-2)*ns+state[t]] <- out[(cap.occ[t-1]-1)*ns+state[t-1], (cap.occ[t]-2)*ns+state[t]] + 1
+            } # t
+         if (max(cap.occ) < no){
+            out[(cap.occ[t]-1)*ns+state[t], ns*(no-1)+1] <- out[(cap.occ[t]-1)*ns+state[t], ns*(no-1)+1] + 1
+            } # if
+         } # if
+      } # t
+   return(out)
+   }    
+
+# Create multistate m-array
+ms.arr <- marray(ch)
+
+
+# Specify model in BUGS language
+cat(file = "multinom-ms.jags", "
+model {
+
+# -------------------------------------------------
+# Parameters:
+# phiA: survival probability at site A
+# phiB: survival probability at site B
+# psiAB: movement probability from site A to site B
+# psiBA: movement probability from site B to site A
+# pA: recapture probability at site A
+# pB: recapture probability at site B
+# -------------------------------------------------
+
+# Priors and constraints
+for (t in 1:(n.occasions-1)){
+   phiA[t] ~ dunif(0, 1)
+   phiB[t] <- ilogit(logit.phiB[t])
+   logit.phiB[t] ~ dnorm(mu.phiB, tau)
+   psiAB[t] <- mean.psi[1]
+   psiBA[t] <- mean.psi[2]
+   pA[t] <- mean.p[1]
+   pB[t] <- mean.p[2]
+   }
+
+mean.phiB ~ dunif(0, 1)
+mu.phiB <- logit(mean.phiB)
+sigma.phiB ~ dunif(0, 5)
+tau <- 1/(sigma.phiB * sigma.phiB)
+for (u in 1:2){
+   mean.psi[u] ~ dunif(0, 1)    # Priors for mean transitions
+   mean.p[u] ~ dunif(0, 1)      # Priors for mean state-spec. recapture
+   }
+
+# Define state-transition and reencounter probabilities
+   for (t in 1:(n.occasions-1)){
+      psi[1,t,1] <- phiA[t] * (1-psiAB[t])
+      psi[1,t,2] <- phiA[t] * psiAB[t]
+      psi[2,t,1] <- phiB[t] * psiBA[t]
+      psi[2,t,2] <- phiB[t] * (1-psiBA[t])
+
+      po[1,t] <- pA[t]
+      po[2,t] <- pB[t]
+
+
+      # Calculate probability of non-encounter (dq) and reshape the array for the encounter probabilities      
+      for (s in 1:ns){
+         dp[s,t,s] <- po[s,t]
+         dq[s,t,s] <- 1-po[s,t]
+         } # s
+      for (s in 1:(ns-1)){
+         for (m in (s+1):ns){
+            dp[s,t,m] <- 0
+            dq[s,t,m] <- 0
+            } # s
+         } # m
+      for (s in 2:ns){
+         for (m in 1:(s-1)){
+            dp[s,t,m] <- 0
+            dq[s,t,m] <- 0
+            } # s
+         } # m
+      } # t
+
+# Define the multinomial likelihood
+for (t in 1:((n.occasions-1)*ns)){
+   marr[t,1:(n.occasions*ns-(ns-1))] ~ dmulti(pr[t,], rel[t])
+   }
+
+# Define the cell probabilities of the multistate m-array   
+# Define matrix U: product of probabilities of state-transition and non-encounter (this is just done because there is no product function for matrix multiplication in JAGS)
+for (t in 1:(n.occasions-2)){
+   U[(t-1)*ns+(1:ns), (t-1)*ns+(1:ns)] <- ones
+   for (j in (t+1):(n.occasions-1)){
+      U[(t-1)*ns+(1:ns), (j-1)*ns+(1:ns)] <- U[(t-1)*ns+(1:ns), (j-2)*ns+(1:ns)] %*% psi[,t,] %*% dq[,t,]
+      }
+   }
+U[(n.occasions-2)*ns+(1:ns), (n.occasions-2)*ns+(1:ns)] <- ones
+# Diagonal
+for (t in 1:(n.occasions-2)){
+   pr[(t-1)*ns+(1:ns),(t-1)*ns+(1:ns)] <- U[(t-1)*ns+(1:ns),(t-1)*ns+(1:ns)] %*% psi[,t,] %*% dp[,t,]
+   # Above main diagonal
+   for (j in (t+1):(n.occasions-1)){
+      pr[(t-1)*ns+(1:ns), (j-1)*ns+(1:ns)] <- U[(t-1)*ns+(1:ns), (j-1)*ns+(1:ns)] %*% psi[,j,] %*% dp[,j,]
+      }
+   }
+pr[(n.occasions-2)*ns+(1:ns), (n.occasions-2)*ns+(1:ns)] <- psi[,n.occasions-1,] %*% dp[,n.occasions-1,]
+
+# Below main diagonal
+for (t in 2:(n.occasions-1)){
+   for (j in 1:(t-1)){
+      pr[(t-1)*ns+(1:ns),(j-1)*ns+(1:ns)] <- zero
+      } #j
+   } #t
+
+# Last column: probability of non-recapture
+for (t in 1:((n.occasions-1)*ns)){
+   pr[t,(n.occasions*ns-(ns-1))] <- 1-sum(pr[t,1:((n.occasions-1)*ns)])
+   } #t
+}
+")
+
+
+# Calculate the number of states
+ns <- length(unique(as.numeric(ch))) - 1
+
+# Bundle data
+jags.data <- list(marr = ms.arr, n.occasions = ncol(ch), rel = rowSums(ms.arr), ns = ns, zero = matrix(0, ncol = ns, nrow = ns), ones = diag(ns))
+
+
+# Initial values
+inits <- function(){list(mean.phiB = runif(1, 0, 1))}  
+
+# Parameters monitored
+parameters <- c("phiA", "phiB", "mean.phiB", "sigma.phiB", "mean.psi", "mean.p")
+
+# MCMC settings
+ni <- 4000; nt <- 1; nb <- 2000; nc <- 3
+
+# Call JAGS from R
+m.ms <- jags(jags.data, inits, parameters, "multinom-ms.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+
+# Inspect results
+par(mfrow = c(3,3))
+traceplot(m.ms)
+
+print(m.ms, digits = 3)
+
+
+
+
+
+###########################################################################
+#
+# Integrated population models
+#
+###########################################################################
+
+
+data <- load("WoodchatShrike.Rdata")
+
+
+# Exercise 1: 
+
+# Fit an IPM that includes demographic stochasticity
+
+
+# Specify the model in BUGS language
+cat(file = "ex1.jags", "
+model { 
+# Priors and constraints
+mean.sj ~ dunif(0, 1)
+mean.sa ~ dunif(0, 1)
+mean.p ~ dunif(0, 1)
+mean.f ~ dunif(0, 10)
+
+for (t in 1:(n.occasions-1)){
+   sj[t] <- mean.sj
+   sa[t] <- mean.sa
+   p[t] <- mean.p
+   }
+
+sigma.obs ~ dunif(0.5, 50)
+tau.obs <- pow(sigma.obs, -2)
+
+# State-space model for count data
+# Model for the initial population size: needs to be a discrete number
+n1 ~ dunif(1, 300)
+n2 ~ dunif(1, 300)
+
+N[1,1] <- round(n1)
+N[2,1] <- round(n2)
+
+
+# Process model over time
+for (t in 1:(n.occasions-1)){
+   N[1,t+1] ~ dpois(mean.f * mean.sj * (N[1,t] + N[2,t]))
+   N[2,t+1] ~ dbin(mean.sa, (N[1,t] + N[2,t]))
+   }
+
+# Observation model
+for (t in 1:n.occasions){
+   count[t] ~ dnorm(N[1,t] + N[2,t], tau.obs)
+   }
+
+# Poisson regression model for productivity data
+for (i in 1:n.J){
+   J[i] ~ dpois(mean.f)
+   }
+
+# Capture-recapture model (multinomial likelihood)
+# Define the multinomial likelihood
+for (t in 1:(n.occasions-1)){
+   marr.j[t,1:n.occasions] ~ dmulti(pr.j[t,], rel.j[t])
+   marr.a[t,1:n.occasions] ~ dmulti(pr.a[t,], rel.a[t])
+   }
+# Define the cell probabilities of the m-arrays
+# Main diagonal
+for (t in 1:(n.occasions-1)){
+   q[t] <- 1-p[t]   # Probability of non-recapture
+   pr.j[t,t] <- sj[t]*p[t]
+   pr.a[t,t] <- sa[t]*p[t]
+   # Above main diagonal
+   for (j in (t+1):(n.occasions-1)){
+      pr.j[t,j] <- sj[t]*prod(sa[(t+1):j])*prod(q[t:(j-1)])*p[j]
+      pr.a[t,j] <- prod(sa[t:j])*prod(q[t:(j-1)])*p[j]
+      } #j
+   # Below main diagonal
+   for (j in 1:(t-1)){
+      pr.j[t,j] <- 0
+      pr.a[t,j] <- 0
+      } #j
+   } #t
+# Last column: probability of non-recapture
+for (t in 1:(n.occasions-1)){
+   pr.j[t,n.occasions] <- 1-sum(pr.j[t,1:(n.occasions-1)])
+   pr.a[t,n.occasions] <- 1-sum(pr.a[t,1:(n.occasions-1)])
+   } #t
+
+# Derived parameters
+# Annual population growth rate
+for (t in 1:(n.occasions-1)){
+   ann.growth.rate[t] <- (N[1,t+1] + N[2,t+1]) / (N[1,t] + N[2,t])    
+   }
+# Total population size
+for (t in 1:n.occasions){
+   Ntot[t] <- N[1,t] + N[2,t]
+   }
+}
+")
+
+
+# Bundle data
+bugs.data <- list(marr.j = marray[,,1], marr.a = marray[,,2], n.occasions = dim(marray)[2], rel.j = rowSums(marray[,,1]), rel.a = rowSums(marray[,,2]), J = J, n.J = length(J), count = count)
+
+
+# Initial values
+inits <- function(){list(mean.sj = runif(1, 0, 0.5), mean.sa = runif(1, 0, 1))}
+
+# Parameters monitored
+parameters <- c("mean.sj", "mean.sa", "mean.p", "mean.f", "N", "sigma.obs", "ann.growth.rate", "Ntot")
+
+# MCMC settings
+ni <- 12000; nt <- 6; nb <- 2000; nc <- 3
+
+# Call JAGS from R (jagsUI)
+ex1 <- jags(bugs.data, inits, parameters, "ex1.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+print(ex1, 3)
+
+# Make plot
+u <- col2rgb("grey92")
+col.pol <- rgb(u[1], u[2], u[3], alpha = 75, maxColorValue = 255)
+par(cex = 1.2)
+plot(ex1$mean$Ntot, type = "n", ylim = range(c(ex1$q2.5$Ntot, ex1$q97.5$Ntot)), ylab = "Population size", xlab = "Year", las = 1, cex = 1.5)
+points(ex1$mean$Ntot, type = "b", col = "black", pch = 16, lty = 1, cex = 1.5)
+points(count, type = "b", col = "cornflowerblue", pch = 1, lty = 2, cex = 1.5)
+points(ind$Nu["Total",], type = "b", col = "red", pch = 1, lty = 2, cex = 1.5)
+T <- length(ex1$mean$Ntot)
+polygon(c(1:T, T:1), c(ex1$q2.5$Ntot, ex1$q97.5$Ntot[T:1]), border = NA, col = col.pol)
+legend("topleft", legend = c("Truth", "Counts", "Estimates"), pch = c(1, 1, 16), col = c("red", "cornflowerblue", "black"), lty = c(2, 2, 1), bty = "n")
+
+
+
+###########################################################################
+
+
+# Exercise 2: 
+
+# Fit an IPM in which adult survival is variable over time and juvenile survival shows a linear temporal trend
+
+
+# Specify the model in BUGS language
+cat(file = "ex2.jags", "
+model { 
+# Priors and constraints
+mean.p ~ dunif(0, 1)
+mean.f ~ dunif(0, 10)
+alpha ~ dnorm(0, 0.001)
+beta ~ dnorm(0, 0.001)
+
+for (t in 1:(n.occasions-1)){
+   logit(sj[t]) <- alpha + beta * t
+   sa[t] ~ dunif(0, 1)
+   p[t] <- mean.p
+   }
+
+sigma.obs ~ dunif(0.5, 50)
+tau.obs <- pow(sigma.obs, -2)
+
+# State-space model for count data
+# Model for the initial population size: discrete uniform priors
+N[1,1] ~ dunif(1, 300)
+N[2,1] ~ dunif(1, 300)
+
+# Process model over time
+for (t in 1:(n.occasions-1)){
+   N[1,t+1] <- mean.f * sj[t] * (N[1,t] + N[2,t])
+   N[2,t+1] <- sa[t] * (N[1,t] + N[2,t])
+   }
+
+# Observation model
+for (t in 1:n.occasions){
+   count[t] ~ dnorm(N[1,t] + N[2,t], tau.obs)
+   }
+
+# Poisson regression model for productivity data
+for (i in 1:n.J){
+   J[i] ~ dpois(mean.f)
+   }
+
+# Capture-recapture model (multinomial likelihood)
+# Define the multinomial likelihood
+for (t in 1:(n.occasions-1)){
+   marr.j[t,1:n.occasions] ~ dmulti(pr.j[t,], rel.j[t])
+   marr.a[t,1:n.occasions] ~ dmulti(pr.a[t,], rel.a[t])
+   }
+# Define the cell probabilities of the m-arrays
+# Main diagonal
+for (t in 1:(n.occasions-1)){
+   q[t] <- 1-p[t]   # Probability of non-recapture
+   pr.j[t,t] <- sj[t]*p[t]
+   pr.a[t,t] <- sa[t]*p[t]
+   # Above main diagonal
+   for (j in (t+1):(n.occasions-1)){
+      pr.j[t,j] <- sj[t]*prod(sa[(t+1):j])*prod(q[t:(j-1)])*p[j]
+      pr.a[t,j] <- prod(sa[t:j])*prod(q[t:(j-1)])*p[j]
+      } #j
+   # Below main diagonal
+   for (j in 1:(t-1)){
+      pr.j[t,j] <- 0
+      pr.a[t,j] <- 0
+      } #j
+   } #t
+# Last column: probability of non-recapture
+for (t in 1:(n.occasions-1)){
+   pr.j[t,n.occasions] <- 1-sum(pr.j[t,1:(n.occasions-1)])
+   pr.a[t,n.occasions] <- 1-sum(pr.a[t,1:(n.occasions-1)])
+   } #t
+
+# Derived parameters
+# Annual population growth rate
+for (t in 1:(n.occasions-1)){
+   ann.growth.rate[t] <- (N[1,t+1] + N[2,t+1]) / (N[1,t] + N[2,t])    
+   }
+# Total population size
+for (t in 1:n.occasions){
+   Ntot[t] <- N[1,t] + N[2,t]
+   }
+}
+")
+
+
+# Bundle data
+bugs.data <- list(marr.j = marray[,,1], marr.a = marray[,,2], n.occasions = dim(marray)[2], rel.j = rowSums(marray[,,1]), rel.a = rowSums(marray[,,2]), J = J, n.J = length(J), count = count)
+
+
+# Initial values
+inits <- function(){list(alpha = runif(1, 0, 0.5), beta = runif(1, 0, 1))}
+
+# Parameters monitored
+parameters <- c("sj", "sa", "alpha", "beta", "mean.p", "mean.f", "N", "sigma.obs", "ann.growth.rate", "Ntot")
+
+# MCMC settings
+ni <- 12000; nt <- 6; nb <- 2000; nc <- 3
+
+# Call JAGS from R (jagsUI)
+ex2 <- jags(bugs.data, inits, parameters, "ex2.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+print(ex2, 3)
+
+
+# Make plot
+u <- col2rgb("grey92")
+col.pol <- rgb(u[1], u[2], u[3], alpha = 75, maxColorValue = 255)
+par(cex = 1.2)
+plot(ex2$mean$Ntot, type = "n", ylim = range(c(ex2$q2.5$Ntot, ex2$q97.5$Ntot)), ylab = "Population size", xlab = "Year", las = 1, cex = 1.5)
+points(ex2$mean$Ntot, type = "b", col = "black", pch = 16, lty = 1, cex = 1.5)
+points(count, type = "b", col = "cornflowerblue", pch = 1, lty = 2, cex = 1.5)
+points(ind$Nu["Total",], type = "b", col = "red", pch = 1, lty = 2, cex = 1.5)
+T <- length(ex2$mean$Ntot)
+polygon(c(1:T, T:1), c(ex2$q2.5$Ntot, ex2$q97.5$Ntot[T:1]), border = NA, col = col.pol)
+legend("topleft", legend = c("Truth", "Counts", "Estimates"), pch = c(1, 1, 16), col = c("red", "cornflowerblue", "black"), lty = c(2, 2, 1), bty = "n")
+
+
+
+###########################################################################
+
+# Exercise 3: 
+
+# Fit an IPM that uses the Poisson distribution for the observation model of the state-space model
+
+
+# Solution 3
+
+# Specify the model in BUGS language
+cat(file = "ex3.jags", "
+model { 
+# Priors and constraints
+mean.sj ~ dunif(0, 1)
+mean.sa ~ dunif(0, 1)
+mean.p ~ dunif(0, 1)
+mean.f ~ dunif(0, 10)
+
+for (t in 1:(n.occasions-1)){
+   sj[t] <- mean.sj
+   sa[t] <- mean.sa
+   p[t] <- mean.p
+   }
+
+
+# State-space model for count data
+# Model for the initial population size: discrete uniform priors
+N[1,1] ~ dunif(1, 300)
+N[2,1] ~ dunif(1, 300)
+
+# Process model over time
+for (t in 1:(n.occasions-1)){
+   N[1,t+1] <- mean.f * mean.sj * (N[1,t] + N[2,t])
+   N[2,t+1] <- mean.sa * (N[1,t] + N[2,t])
+   }
+
+# Observation model
+for (t in 1:n.occasions){
+   count[t] ~ dpois(N[1,t] + N[2,t])
+   }
+
+# Poisson regression model for productivity data
+for (i in 1:n.J){
+   J[i] ~ dpois(mean.f)
+   }
+
+# Capture-recapture model (multinomial likelihood)
+# Define the multinomial likelihood
+for (t in 1:(n.occasions-1)){
+   marr.j[t,1:n.occasions] ~ dmulti(pr.j[t,], rel.j[t])
+   marr.a[t,1:n.occasions] ~ dmulti(pr.a[t,], rel.a[t])
+   }
+# Define the cell probabilities of the m-arrays
+# Main diagonal
+for (t in 1:(n.occasions-1)){
+   q[t] <- 1-p[t]   # Probability of non-recapture
+   pr.j[t,t] <- sj[t]*p[t]
+   pr.a[t,t] <- sa[t]*p[t]
+   # Above main diagonal
+   for (j in (t+1):(n.occasions-1)){
+      pr.j[t,j] <- sj[t]*prod(sa[(t+1):j])*prod(q[t:(j-1)])*p[j]
+      pr.a[t,j] <- prod(sa[t:j])*prod(q[t:(j-1)])*p[j]
+      } #j
+   # Below main diagonal
+   for (j in 1:(t-1)){
+      pr.j[t,j] <- 0
+      pr.a[t,j] <- 0
+      } #j
+   } #t
+# Last column: probability of non-recapture
+for (t in 1:(n.occasions-1)){
+   pr.j[t,n.occasions] <- 1-sum(pr.j[t,1:(n.occasions-1)])
+   pr.a[t,n.occasions] <- 1-sum(pr.a[t,1:(n.occasions-1)])
+   } #t
+
+# Derived parameters
+# Annual population growth rate
+for (t in 1:(n.occasions-1)){
+   ann.growth.rate[t] <- (N[1,t+1] + N[2,t+1]) / (N[1,t] + N[2,t])    
+   }
+# Total population size
+for (t in 1:n.occasions){
+   Ntot[t] <- N[1,t] + N[2,t]
+   }
+}
+")
+
+
+# Bundle data
+bugs.data <- list(marr.j = marray[,,1], marr.a = marray[,,2], n.occasions = dim(marray)[2], rel.j = rowSums(marray[,,1]), rel.a = rowSums(marray[,,2]), J = J, n.J = length(J), count = count)
+
+
+# Initial values
+inits <- function(){list(mean.sj = runif(1, 0, 0.5), mean.sa = runif(1, 0, 1))}
+
+# Parameters monitored
+parameters <- c("mean.sj", "mean.sa", "mean.p", "mean.f", "N", "ann.growth.rate", "Ntot")
+
+# MCMC settings
+ni <- 12000; nt <- 6; nb <- 2000; nc <- 3
+
+# Call JAGS from R (jagsUI)
+ex3 <- jags(bugs.data, inits, parameters, "ex3.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+print(ex3, 3)
+
+
+
+# Make plot
+u <- col2rgb("grey92")
+col.pol <- rgb(u[1], u[2], u[3], alpha = 75, maxColorValue = 255)
+par(cex = 1.2)
+plot(ex3$mean$Ntot, type = "n", ylim = range(c(ex3$q2.5$Ntot, ex3$q97.5$Ntot)), ylab = "Population size", xlab = "Year", las = 1, cex = 1.5)
+points(ex3$mean$Ntot, type = "b", col = "black", pch = 16, lty = 1, cex = 1.5)
+points(count, type = "b", col = "cornflowerblue", pch = 1, lty = 2, cex = 1.5)
+points(ind$Nu["Total",], type = "b", col = "red", pch = 1, lty = 2, cex = 1.5)
+T <- length(ex3$mean$Ntot)
+polygon(c(1:T, T:1), c(ex3$q2.5$Ntot, ex3$q97.5$Ntot[T:1]), border = NA, col = col.pol)
+legend("topleft", legend = c("Truth", "Counts", "Estimates"), pch = c(1, 1, 16), col = c("red", "cornflowerblue", "black"), lty = c(2, 2, 1), bty = "n")
+
+
+
+###########################################################################
+
+# Exercise 4: 
+
+# Fit an IPM to the shrike data. Assume that only capture-recapture data of the adults [CH.A.marray], counts and productivity data are available.
+
+
+# Specify the model in BUGS language
+cat(file = "ex4.jags", "
+model { 
+# Priors and constraints
+mean.sj ~ dunif(0, 1)
+mean.sa ~ dunif(0, 1)
+mean.p ~ dunif(0, 1)
+mean.f ~ dunif(0, 10)
+
+for (t in 1:(n.occasions-1)){
+   sj[t] <- mean.sj
+   sa[t] <- mean.sa
+   p[t] <- mean.p
+   }
+
+sigma.obs ~ dunif(0.5, 50)
+tau.obs <- pow(sigma.obs, -2)
+
+# State-space model for count data
+# Model for the initial population size: discrete uniform priors
+N[1,1] ~ dunif(1, 300)
+N[2,1] ~ dunif(1, 300)
+
+# Process model over time
+for (t in 1:(n.occasions-1)){
+   N[1,t+1] <- mean.f * mean.sj * (N[1,t] + N[2,t])
+   N[2,t+1] <- mean.sa * (N[1,t] + N[2,t])
+   }
+
+# Observation model
+for (t in 1:n.occasions){
+   count[t] ~ dnorm(N[1,t] + N[2,t], tau.obs)
+   }
+
+# Poisson regression model for productivity data
+for (i in 1:n.J){
+   J[i] ~ dpois(mean.f)
+   }
+
+# Capture-recapture model (multinomial likelihood)
+# Define the multinomial likelihood
+for (t in 1:(n.occasions-1)){
+   marr.a[t,1:n.occasions] ~ dmulti(pr.a[t,], rel.a[t])
+   }
+# Define the cell probabilities of the m-arrays
+# Main diagonal
+for (t in 1:(n.occasions-1)){
+   q[t] <- 1-p[t]   # Probability of non-recapture
+   pr.a[t,t] <- sa[t]*p[t]
+   # Above main diagonal
+   for (j in (t+1):(n.occasions-1)){
+      pr.a[t,j] <- prod(sa[t:j])*prod(q[t:(j-1)])*p[j]
+      } #j
+   # Below main diagonal
+   for (j in 1:(t-1)){
+      pr.a[t,j] <- 0
+      } #j
+   } #t
+# Last column: probability of non-recapture
+for (t in 1:(n.occasions-1)){
+   pr.a[t,n.occasions] <- 1-sum(pr.a[t,1:(n.occasions-1)])
+   } #t
+
+# Derived parameters
+# Annual population growth rate
+for (t in 1:(n.occasions-1)){
+   ann.growth.rate[t] <- (N[1,t+1] + N[2,t+1]) / (N[1,t] + N[2,t])    
+   }
+# Total population size
+for (t in 1:n.occasions){
+   Ntot[t] <- N[1,t] + N[2,t]
+   }
+}
+")
+
+
+# Bundle data
+bugs.data <- list(marr.a = marray[,,2], n.occasions = dim(marray)[2], rel.a = rowSums(marray[,,2]), J = J, n.J = length(J), count = count)
+
+
+# Initial values
+inits <- function(){list(mean.sj = runif(1, 0, 0.5), mean.sa = runif(1, 0, 1))}
+
+# Parameters monitored
+parameters <- c("mean.sj", "mean.sa", "mean.p", "mean.f", "N", "sigma.obs", "ann.growth.rate", "Ntot")
+
+# MCMC settings
+ni <- 12000; nt <- 6; nb <- 2000; nc <- 3
+
+# Call JAGS from R (jagsUI)
+ex4 <- jags(bugs.data, inits, parameters, "ex4.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+print(ex4, 3)
+
+
+
+# Make plot
+u <- col2rgb("grey92")
+col.pol <- rgb(u[1], u[2], u[3], alpha = 75, maxColorValue = 255)
+par(cex = 1.2)
+plot(ex4$mean$Ntot, type = "n", ylim = range(c(ex4$q2.5$Ntot, ex4$q97.5$Ntot)), ylab = "Population size", xlab = "Year", las = 1, cex = 1.5)
+points(ex4$mean$Ntot, type = "b", col = "black", pch = 16, lty = 1, cex = 1.5)
+points(count, type = "b", col = "cornflowerblue", pch = 1, lty = 2, cex = 1.5)
+points(ind$Nu["Total",], type = "b", col = "red", pch = 1, lty = 2, cex = 1.5)
+T <- length(ex4$mean$Ntot)
+polygon(c(1:T, T:1), c(ex4$q2.5$Ntot, ex4$q97.5$Ntot[T:1]), border = NA, col = col.pol)
+legend("topleft", legend = c("Truth", "Counts", "Estimates"), pch = c(1, 1, 16), col = c("red", "cornflowerblue", "black"), lty = c(2, 2, 1), bty = "n")
+
+
+
+###########################################################################
+
+
+# Exercise 5: 
+
+# Fit an IPM to the woodchat shrike data. Assume now, that the shikes start to breed only when they are 2 years old. 
+
+
+# Specify the model in BUGS language
+cat(file = "ex5.jags", "
+model { 
+# Priors and constraints
+mean.sj ~ dunif(0, 1)
+mean.sa ~ dunif(0, 1)
+mean.p ~ dunif(0, 1)
+mean.f ~ dunif(0, 10)
+
+for (t in 1:(n.occasions-1)){
+   sj[t] <- mean.sj
+   sa[t] <- mean.sa
+   p[t] <- mean.p
+   }
+
+sigma.obs ~ dunif(0.5, 50)
+tau.obs <- pow(sigma.obs, -2)
+
+# State-space model for count data
+# Model for the initial population size: discrete uniform priors
+N[1,1] ~ dunif(1, 300)
+N[2,1] ~ dunif(1, 300)
+
+# Process model over time
+for (t in 1:(n.occasions-1)){
+   N[1,t+1] <- mean.f * mean.sj * N[2,t]
+   N[2,t+1] <- mean.sa * (N[1,t] + N[2,t])
+   }
+
+# Observation model
+for (t in 1:n.occasions){
+   count[t] ~ dnorm(N[1,t] + N[2,t], tau.obs)
+   }
+
+# Poisson regression model for productivity data
+for (i in 1:n.J){
+   J[i] ~ dpois(mean.f)
+   }
+
+# Capture-recapture model (multinomial likelihood)
+# Define the multinomial likelihood
+for (t in 1:(n.occasions-1)){
+   marr.j[t,1:n.occasions] ~ dmulti(pr.j[t,], rel.j[t])
+   marr.a[t,1:n.occasions] ~ dmulti(pr.a[t,], rel.a[t])
+   }
+# Define the cell probabilities of the m-arrays
+# Main diagonal
+for (t in 1:(n.occasions-1)){
+   q[t] <- 1-p[t]   # Probability of non-recapture
+   pr.j[t,t] <- sj[t]*p[t]
+   pr.a[t,t] <- sa[t]*p[t]
+   # Above main diagonal
+   for (j in (t+1):(n.occasions-1)){
+      pr.j[t,j] <- sj[t]*prod(sa[(t+1):j])*prod(q[t:(j-1)])*p[j]
+      pr.a[t,j] <- prod(sa[t:j])*prod(q[t:(j-1)])*p[j]
+      } #j
+   # Below main diagonal
+   for (j in 1:(t-1)){
+      pr.j[t,j] <- 0
+      pr.a[t,j] <- 0
+      } #j
+   } #t
+# Last column: probability of non-recapture
+for (t in 1:(n.occasions-1)){
+   pr.j[t,n.occasions] <- 1-sum(pr.j[t,1:(n.occasions-1)])
+   pr.a[t,n.occasions] <- 1-sum(pr.a[t,1:(n.occasions-1)])
+   } #t
+
+# Derived parameters
+# Annual population growth rate
+for (t in 1:(n.occasions-1)){
+   ann.growth.rate[t] <- (N[1,t+1] + N[2,t+1]) / (N[1,t] + N[2,t])    
+   }
+# Total population size
+for (t in 1:n.occasions){
+   Ntot[t] <- N[1,t] + N[2,t]
+   }
+}
+")
+
+
+# Bundle data
+bugs.data <- list(marr.j = marray[,,1], marr.a = marray[,,2], n.occasions = dim(marray)[2], rel.j = rowSums(marray[,,1]), rel.a = rowSums(marray[,,2]), J = J, n.J = length(J), count = count)
+
+
+# Initial values
+inits <- function(){list(mean.sj = runif(1, 0, 0.5), mean.sa = runif(1, 0, 1))}
+
+# Parameters monitored
+parameters <- c("mean.sj", "mean.sa", "mean.p", "mean.f", "N", "sigma.obs", "ann.growth.rate", "Ntot")
+
+# MCMC settings
+ni <- 12000; nt <- 6; nb <- 2000; nc <- 3
+
+# Call JAGS from R (jagsUI)
+ex5 <- jags(bugs.data, inits, parameters, "ex5.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+print(ex5, 3)
+
+
+# Make plot
+u <- col2rgb("grey92")
+col.pol <- rgb(u[1], u[2], u[3], alpha = 75, maxColorValue = 255)
+par(cex = 1.2)
+plot(ex5$mean$Ntot, type = "n", ylim = range(c(ex5$q2.5$Ntot, ex5$q97.5$Ntot)), ylab = "Population size", xlab = "Year", las = 1, cex = 1.5)
+points(ex5$mean$Ntot, type = "b", col = "black", pch = 16, lty = 1, cex = 1.5)
+points(count, type = "b", col = "cornflowerblue", pch = 1, lty = 2, cex = 1.5)
+points(ind$Nu["Total",], type = "b", col = "red", pch = 1, lty = 2, cex = 1.5)
+T <- length(ex5$mean$Ntot)
+polygon(c(1:T, T:1), c(ex5$q2.5$Ntot, ex5$q97.5$Ntot[T:1]), border = NA, col = col.pol)
+legend("topleft", legend = c("Truth", "Counts", "Estimates"), pch = c(1, 1, 16), col = c("red", "cornflowerblue", "black"), lty = c(2, 2, 1), bty = "n")
+
+
+
+###########################################################################
+
+# Exercise 6: 
+
+# Fit an IPM to the woodchat shrike data. Still use the pre-breeding census model, but change the model in such a way that we monitor in addition the number of fledglings.
+
+
+# Specify the model in BUGS language
+cat(file = "ex6.jags", "
+model { 
+# Priors and constraints
+mean.sj ~ dunif(0, 1)
+mean.sa ~ dunif(0, 1)
+mean.p ~ dunif(0, 1)
+mean.f ~ dunif(0, 10)
+
+for (t in 1:(n.occasions-1)){
+   sj[t] <- mean.sj
+   sa[t] <- mean.sa
+   p[t] <- mean.p
+   }
+
+sigma.obs ~ dunif(0.5, 50)
+tau.obs <- pow(sigma.obs, -2)
+
+# State-space model for count data
+# Model for the initial population size: discrete uniform priors
+n1 ~ dunif(1, 300)
+n2 ~ dunif(1, 300)
+
+N[1,1] <- round(n1)
+N[2,1] <- round(n2)
+
+
+# Process model over time
+for (t in 1:(n.occasions-1)){
+   Nj[t] ~ dpois(mean.f * (N[1,t] + N[2,t]))
+   N[1,t+1] ~ dbin(mean.sj, Nj[t])
+   N[2,t+1] ~ dbin(mean.sa, (N[1,t] + N[2,t]))
+   }
+
+# Observation model
+for (t in 1:n.occasions){
+   count[t] ~ dnorm(N[1,t] + N[2,t], tau.obs)
+   }
+
+# Poisson regression model for productivity data
+for (i in 1:n.J){
+   J[i] ~ dpois(mean.f)
+   }
+
+# Capture-recapture model (multinomial likelihood)
+# Define the multinomial likelihood
+for (t in 1:(n.occasions-1)){
+   marr.j[t,1:n.occasions] ~ dmulti(pr.j[t,], rel.j[t])
+   marr.a[t,1:n.occasions] ~ dmulti(pr.a[t,], rel.a[t])
+   }
+# Define the cell probabilities of the m-arrays
+# Main diagonal
+for (t in 1:(n.occasions-1)){
+   q[t] <- 1-p[t]   # Probability of non-recapture
+   pr.j[t,t] <- sj[t]*p[t]
+   pr.a[t,t] <- sa[t]*p[t]
+   # Above main diagonal
+   for (j in (t+1):(n.occasions-1)){
+      pr.j[t,j] <- sj[t]*prod(sa[(t+1):j])*prod(q[t:(j-1)])*p[j]
+      pr.a[t,j] <- prod(sa[t:j])*prod(q[t:(j-1)])*p[j]
+      } #j
+   # Below main diagonal
+   for (j in 1:(t-1)){
+      pr.j[t,j] <- 0
+      pr.a[t,j] <- 0
+      } #j
+   } #t
+# Last column: probability of non-recapture
+for (t in 1:(n.occasions-1)){
+   pr.j[t,n.occasions] <- 1-sum(pr.j[t,1:(n.occasions-1)])
+   pr.a[t,n.occasions] <- 1-sum(pr.a[t,1:(n.occasions-1)])
+   } #t
+
+# Derived parameters
+# Annual population growth rate
+for (t in 1:(n.occasions-1)){
+   ann.growth.rate[t] <- (N[1,t+1] + N[2,t+1]) / (N[1,t] + N[2,t])    
+   }
+# Total population size
+for (t in 1:n.occasions){
+   Ntot[t] <- N[1,t] + N[2,t]
+   }
+}
+")
+
+
+# Bundle data
+bugs.data <- list(marr.j = marray[,,1], marr.a = marray[,,2], n.occasions = dim(marray)[2], rel.j = rowSums(marray[,,1]), rel.a = rowSums(marray[,,2]), J = J, n.J = length(J), count = count)
+
+
+# Initial values
+inits <- function(){list(mean.sj = runif(1, 0, 0.5), mean.sa = runif(1, 0, 1))}
+
+# Parameters monitored
+parameters <- c("mean.sj", "mean.sa", "mean.p", "mean.f", "N", "Nj", "sigma.obs", "ann.growth.rate", "Ntot")
+
+# MCMC settings
+ni <- 12000; nt <- 6; nb <- 2000; nc <- 3
+
+# Call JAGS from R (jagsUI)
+ex6 <- jags(bugs.data, inits, parameters, "ex6.jags", n.chains = nc, n.thin = nt, n.iter = ni, n.burnin = nb)
+
+print(ex6, 3)
+
+
+
+
+
+
+
+
+
